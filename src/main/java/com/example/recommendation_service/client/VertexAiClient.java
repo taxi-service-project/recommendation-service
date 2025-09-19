@@ -9,7 +9,6 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import java.io.IOException;
 import java.util.Collections;
 
 @Component
@@ -47,7 +46,7 @@ public class VertexAiClient {
         String apiUrl = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/%s:predict",
                 location, projectId, location, endpointId);
 
-        // 2. 요청 Body 생성 (gcloud에서 성공했던 JSON과 동일한 구조)
+        // 2. 요청 Body 생성
         String requestBody = String.format(
                 "{\"instances\": [{\"city\": \"%s\", \"latitude\": \"%s\", \"longitude\": \"%s\", \"hour_of_day\": \"%s\", \"day_of_week\": \"%s\"}]}",
                 city,

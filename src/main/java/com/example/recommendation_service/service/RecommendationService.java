@@ -27,10 +27,11 @@ public class RecommendationService {
     private record PredictedLocation(Point location, double score) {
     }
 
-    public Mono<String> getBestLocationRecommendation(double lon, double lat, String city) {
+    public Mono<String> getBestLocationRecommendation(double lon, double lat) {
         LocalDateTime now = LocalDateTime.now();
         int hour = now.getHour();
         int dayOfWeek = now.getDayOfWeek().getValue() - 1;
+        String city = " ";
 
         Point center = new Point(lon, lat);
         Distance radius = new Distance(5, Metrics.KILOMETERS);
@@ -39,7 +40,7 @@ public class RecommendationService {
                                                           .radius(
                                                                   HOTSPOTS_KEY,
                                                                   new Circle(center, radius),
-                                                                  RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates() // 좌표 포함
+                                                                  RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates()
                                                           )
                                                           .filter(geoResult -> geoResult != null && geoResult.getContent() != null && geoResult.getContent().getPoint() != null)
                                                           .map(geoResult -> geoResult.getContent().getPoint());
@@ -50,7 +51,7 @@ public class RecommendationService {
                         vertexAiClient.predict(hotspot.getX(), hotspot.getY(), hour, dayOfWeek, city)
                                       .doOnNext(score -> log.info("Vertex AI 예측 점수: {}", score))
                                       .map(score -> new PredictedLocation(hotspot, score))
-                                      .doOnError(e -> log.error("Vertex AI 예측 중 오류 발생", e)) // e.getMessage() 대신 e를 넣어주세요.
+                                      .doOnError(e -> log.error("Vertex AI 예측 중 오류 발생", e))
                                       .onErrorResume(e -> Mono.empty())
                 )
                 .doOnNext(prediction -> log.info("예측된 핫스팟: {}", prediction))
@@ -67,34 +68,3 @@ public class RecommendationService {
                 .defaultIfEmpty("주변에 추천할 만한 핫스팟이 없습니다.");
     }
 }
-
-    /*
-    public Mono<String> getBestLocationRecommendation(double lon, double lat) {
-        LocalDateTime now = LocalDateTime.now();
-        int hour = now.getHour();
-        int dayOfWeek = now.getDayOfWeek().getValue() - 1;
-
-        Point center = new Point(lon, lat);
-        Distance radius = new Distance(5, Metrics.KILOMETERS);
-        Flux<Point> nearbyHotspots = reactiveRedisTemplate.opsForGeo()
-                                                          .radius(HOTSPOTS_KEY, new Circle(center, radius))
-                                                          .map(geoResult -> (Point) geoResult.getContent().getPoint());
-
-        Flux<PredictedLocation> predictions = nearbyHotspots
-                .flatMap(hotspot ->
-                        naverMapsClient.reverseGeocodeToGetCity(hotspot.getX(), hotspot.getY())
-                                       .flatMap(city ->
-                                               vertexAiClient.predict(hotspot.getY(), hotspot.getX(), hour, dayOfWeek, city)
-                                                             .map(score -> new PredictedLocation(hotspot, score))
-                                       )
-                );
-
-        return predictions
-                .reduce((loc1, loc2) -> loc1.score > loc2.score ? loc1 : loc2)
-                .flatMap(best -> naverMapsClient.reverseGeocode(best.location.getX(), best.location.getY()))
-                .map(locationName -> String.format("10분 후 %s 인근의 수요가 가장 높을 것으로 예상됩니다. 이동을 추천합니다.", locationName))
-                .defaultIfEmpty("주변에 추천할 만한 핫스팟이 없습니다.");
-    }
-
-}
-*/

@@ -10,12 +10,12 @@ spring:
       port: 6379
 
 gcp:
-  project-id: silent-emissary-469605-e7
-  location: asia-northeast3
+  project-id:
+  location:
   vertex-ai:
-    endpoint-id: 1479716151591174144
+    endpoint-id:
 
 naver:
   api:
-    client-id: j17jc0k42e
-    client-secret: ASjsKm8neElR4KTrfh1LumyAabzaewZqlOAgqmP0
+    client-id:
+    client-secret:
