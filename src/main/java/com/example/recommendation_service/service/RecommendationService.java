@@ -34,7 +34,7 @@ public class RecommendationService {
         String city = " ";
 
         Point center = new Point(lon, lat);
-        Distance radius = new Distance(5, Metrics.KILOMETERS);
+        Distance radius = new Distance(7, Metrics.KILOMETERS);
 
         Flux<Point> nearbyHotspots = reactiveRedisTemplate.opsForGeo()
                                                           .radius(
