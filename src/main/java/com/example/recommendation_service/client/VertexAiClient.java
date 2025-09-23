@@ -41,18 +41,18 @@ public class VertexAiClient {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
-    public Mono<Double> predict(double longitude, double latitude, int hour, int dayOfWeek, String city) {
+    public Mono<Double> predict(double longitude, double latitude, int timeSlot, int dayOfWeek, String city) {
         // 1. API 요청 URL 생성
         String apiUrl = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/%s:predict",
                 location, projectId, location, endpointId);
 
         // 2. 요청 Body 생성
         String requestBody = String.format(
-                "{\"instances\": [{\"city\": \"%s\", \"latitude\": \"%s\", \"longitude\": \"%s\", \"hour_of_day\": \"%s\", \"day_of_week\": \"%s\"}]}",
+                "{\"instances\": [{\"city\": \"%s\", \"latitude\": \"%s\", \"longitude\": \"%s\", \"time_slot\": \"%s\", \"day_of_week\": \"%s\"}]}",
                 city,
                 String.valueOf(latitude),
                 String.valueOf(longitude),
-                String.valueOf(hour),
+                String.valueOf(timeSlot),
                 String.valueOf(dayOfWeek)
         );
 

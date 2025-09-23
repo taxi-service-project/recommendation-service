@@ -30,8 +30,10 @@ public class RecommendationService {
     public Mono<String> getBestLocationRecommendation(double lon, double lat) {
         LocalDateTime now = LocalDateTime.now();
         int hour = now.getHour();
+        int minute = now.getMinute();
         int dayOfWeek = now.getDayOfWeek().getValue() - 1;
         String city = " ";
+        int timeSlot = (hour * 4) + (minute / 15);
 
         Point center = new Point(lon, lat);
         Distance radius = new Distance(7, Metrics.KILOMETERS);
@@ -48,7 +50,7 @@ public class RecommendationService {
         // nearbyHotspots 스트림을 예측 점수로 변환
         Flux<PredictedLocation> predictions = nearbyHotspots
                 .flatMap(hotspot ->
-                        vertexAiClient.predict(hotspot.getX(), hotspot.getY(), hour, dayOfWeek, city)
+                        vertexAiClient.predict(hotspot.getX(), hotspot.getY(), timeSlot, dayOfWeek, city)
                                       .doOnNext(score -> log.info("Vertex AI 예측 점수: {}", score))
                                       .map(score -> new PredictedLocation(hotspot, score))
                                       .doOnError(e -> log.error("Vertex AI 예측 중 오류 발생", e))
@@ -64,7 +66,7 @@ public class RecommendationService {
                 .flatMap(best -> naverMapsClient.reverseGeocode(best.location.getX(), best.location.getY()))
                 .doOnNext(locationName -> log.info("주소 변환 결과: {}", locationName))
                 .doOnError(e -> log.error("최종 주소 변환 중 오류 발생: {}", e.getMessage()))
-                .map(locationName -> String.format("10분 후 %s 인근의 수요가 가장 높을 것으로 예상됩니다. 이동을 추천합니다.", locationName))
+                .map(locationName -> String.format("약 15분뒤 %s 인근의 수요가 가장 높을 것으로 예상됩니다. 이동을 추천합니다.", locationName))
                 .defaultIfEmpty("주변에 추천할 만한 핫스팟이 없습니다.");
     }
 }
