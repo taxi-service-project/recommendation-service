@@ -3,6 +3,9 @@ package com.example.recommendation_service.client;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.AccessToken;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreaker;
+import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -10,6 +13,9 @@ import reactor.core.scheduler.Schedulers;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 @Slf4j
@@ -18,20 +24,23 @@ public class VertexAiClient {
     private final String projectId;
     private final String location;
     private final WebClient webClient;
+    private final ReactiveCircuitBreaker circuitBreaker;
 
-    public VertexAiClient(@org.springframework.beans.factory.annotation.Value("${gcp.project-id}") String projectId,
-                          @org.springframework.beans.factory.annotation.Value("${gcp.location}") String location,
-                          @org.springframework.beans.factory.annotation.Value("${gcp.vertex-ai.endpoint-id}") String endpointId,
-                          WebClient.Builder webClientBuilder) {
+    public VertexAiClient(@Value("${gcp.project-id}") String projectId,
+                          @Value("${gcp.location}") String location,
+                          @Value("${gcp.vertex-ai.endpoint-id}") String endpointId,
+                          WebClient.Builder webClientBuilder,
+                          ReactiveCircuitBreakerFactory cbFactory) {
         this.projectId = projectId;
         this.location = location;
         this.endpointId = endpointId;
         this.webClient = webClientBuilder.build();
-        log.info("VertexAiClient (REST) created with projectId: {}, location: {}, endpointId: {}",
-                this.projectId, this.location, this.endpointId);
+        this.circuitBreaker = cbFactory.create("vertex-service");
+
+        log.info("VertexAiClient created. Project: {}, Location: {}, Endpoint: {}",
+                projectId, location, endpointId);
     }
 
-    // 인증 토큰을 비동기적으로 가져오는 메소드
     private Mono<String> getAccessToken() {
         return Mono.fromCallable(() -> {
             GoogleCredentials credentials = GoogleCredentials.getApplicationDefault()
@@ -42,40 +51,38 @@ public class VertexAiClient {
     }
 
     public Mono<Double> predict(double longitude, double latitude, int timeSlot, int dayOfWeek, String city) {
-        // 1. API 요청 URL 생성
         String apiUrl = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/%s:predict",
                 location, projectId, location, endpointId);
 
-        // 2. 요청 Body 생성
-        String requestBody = String.format(
-                "{\"instances\": [{\"city\": \"%s\", \"latitude\": \"%s\", \"longitude\": \"%s\", \"time_slot\": \"%s\", \"day_of_week\": \"%s\"}]}",
-                city,
-                String.valueOf(latitude),
-                String.valueOf(longitude),
-                String.valueOf(timeSlot),
-                String.valueOf(dayOfWeek)
-        );
+        Map<String, Object> instance = new HashMap<>();
+        instance.put("city", city);
+        instance.put("latitude", String.valueOf(latitude));
+        instance.put("longitude", String.valueOf(longitude));
+        instance.put("time_slot", String.valueOf(timeSlot));
+        instance.put("day_of_week", String.valueOf(dayOfWeek));
 
-        // 3. 인증 토큰을 가져와서 API 호출
-        return getAccessToken().flatMap(token ->
+        Map<String, Object> requestBody = Map.of("instances", List.of(instance));
+
+        Mono<Double> apiCall = getAccessToken().flatMap(token ->
                 webClient.post()
                          .uri(apiUrl)
                          .header("Authorization", "Bearer " + token)
-                         .header("Content-Type", "application/json; charset=utf-8")
                          .bodyValue(requestBody)
                          .retrieve()
                          .bodyToMono(JsonNode.class)
                          .map(responseNode -> {
-                             // 4. 응답에서 예측 결과 파싱
-                             if (responseNode.has("predictions") && responseNode.get("predictions").isArray() && !responseNode.get("predictions").isEmpty()) {
-                                 JsonNode prediction = responseNode.get("predictions").get(0);
-                                 if (prediction.has("value")) {
-                                     return prediction.get("value").asDouble();
-                                 }
+                             if (responseNode.has("predictions") &&
+                                     !responseNode.get("predictions").isEmpty()) {
+                                 return responseNode.get("predictions").get(0).get("value").asDouble();
                              }
-                             log.warn("Vertex AI 예측 결과가 없거나 형식이 올바르지 않습니다: {}", responseNode);
+                             log.warn("Vertex AI 예측값 없음: {}", responseNode);
                              return 0.0;
                          })
         );
+
+        return circuitBreaker.run(apiCall, throwable -> {
+            log.warn("Vertex AI 호출 실패 또는 서킷 오픈 (Fallback: 0.0 반환). Error: {}", throwable.getMessage());
+            return Mono.just(0.0);
+        });
     }
 }

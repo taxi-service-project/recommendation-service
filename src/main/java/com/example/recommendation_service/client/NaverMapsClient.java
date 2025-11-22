@@ -2,18 +2,23 @@ package com.example.recommendation_service.client;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreaker;
+import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
 @Slf4j
 public class NaverMapsClient {
+
     private final WebClient webClient;
     private final String clientId;
     private final String clientSecret;
+    private final ReactiveCircuitBreaker circuitBreaker;
 
     private record NaverGeocodeResponse(List<Result> results) {
         record Result(Region region, Land land) {}
@@ -24,33 +29,39 @@ public class NaverMapsClient {
 
     public NaverMapsClient(WebClient.Builder builder,
                            @Value("${naver.api.client-id}") String clientId,
-                           @Value("${naver.api.client-secret}") String clientSecret) {
+                           @Value("${naver.api.client-secret}") String clientSecret,
+                           ReactiveCircuitBreakerFactory cbFactory) { // ✅ Factory 주입
         this.webClient = builder.baseUrl("https://naveropenapi.apigw.ntruss.com").build();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
+        this.circuitBreaker = cbFactory.create("naver-service");
     }
 
     public Mono<String> reverseGeocode(double longitude, double latitude) {
         String coords = String.format("%s,%s", longitude, latitude);
-        return webClient.get()
-                        .uri("/map-reversegeocode/v2/gc?coords={coords}&output=json", coords)
-                        .header("X-NCP-APIGW-API-KEY-ID", clientId)
-                        .header("X-NCP-APIGW-API-KEY", clientSecret)
-                        .retrieve()
-                        .bodyToMono(NaverGeocodeResponse.class)
-                        .map(this::formatAddress)
-                        .flatMap(Mono::justOrEmpty)
-                        .switchIfEmpty(Mono.just("알 수 없는 주소"))
-                        .onErrorResume(e -> {
-                            log.error("네이버 지도 API 호출 실패. coords: {}", coords, e);
-                            return Mono.just("주소 변환 실패");
-                        });
+
+        Mono<String> apiCall = webClient.get()
+                                        .uri("/map-reversegeocode/v2/gc?coords={coords}&output=json", coords)
+                                        .header("X-NCP-APIGW-API-KEY-ID", clientId)
+                                        .header("X-NCP-APIGW-API-KEY", clientSecret)
+                                        .retrieve()
+                                        .bodyToMono(NaverGeocodeResponse.class)
+                                        .map(this::formatAddress)
+                                        .flatMap(Mono::justOrEmpty)
+                                        .switchIfEmpty(Mono.just("알 수 없는 주소"));
+
+        return circuitBreaker.run(apiCall, throwable -> {
+            log.warn("네이버 지도 API 호출 실패 또는 서킷 오픈. coords: {}. Error: {}", coords, throwable.getMessage());
+            return Mono.just("주소 변환 실패 (시스템 지연)");
+        });
     }
 
     public Mono<String> reverseGeocodeToGetCity(double longitude, double latitude) {
         return this.reverseGeocode(longitude, latitude)
                    .map(fullAddress -> {
-                       if (fullAddress != null && !fullAddress.isBlank() && !fullAddress.equals("주소 변환 실패")) {
+                       if (fullAddress != null && !fullAddress.isBlank() &&
+                               !fullAddress.equals("주소 변환 실패") &&
+                               !fullAddress.equals("주소 변환 실패 (시스템 지연)")) {
                            return fullAddress.split(" ")[0];
                        }
                        return "unknown";
