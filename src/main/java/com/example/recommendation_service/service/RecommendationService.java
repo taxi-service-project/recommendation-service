@@ -19,10 +19,13 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 @Slf4j
 public class RecommendationService {
+
+    private static final String HOTSPOTS_KEY = "demand_hotspots";
+
     private final VertexAiClient vertexAiClient;
     private final NaverMapsClient naverMapsClient;
-    private final ReactiveRedisTemplate<String, String> reactiveRedisTemplate;
-    private static final String HOTSPOTS_KEY = "demand_hotspots";
+    
+    private final ReactiveRedisTemplate<String, String> reactiveRedisTemplate; // 영속성 레디스
 
     private record PredictedLocation(Point location, double score) {
     }
