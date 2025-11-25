@@ -19,3 +19,11 @@
 ## 🚀 Key Improvements
 * **Fault Isolation:** 외부 API 호출 시 **Circuit Breaker**를 적용하여 장애 전파 차단.
 * **Adaptive Timeouts:** 서비스별로 타임아웃 정책 차별화.
+
+
+
+
+----------
+
+## 아키텍쳐
+<img width="2324" height="1686" alt="Image" src="https://github.com/user-attachments/assets/81a25ff9-ee02-4996-80d3-f9217c3b7750" />
