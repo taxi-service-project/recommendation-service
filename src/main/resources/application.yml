@@ -26,6 +26,14 @@ resilience4j:
         sliding-window-size: 20
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
+  timelimiter:
+    instances:
+      naver-service:
+        timeout-duration: 5s
+        cancel-running-future: true
+      vertex-service:
+        timeout-duration: 5s
+        cancel-running-future: true
 
 gcp:
   project-id:
