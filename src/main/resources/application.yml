@@ -16,20 +16,20 @@ resilience4j:
         failure-rate-threshold: 50
         minimum-number-of-calls: 10
         sliding-window-type: count-based
-        sliding-window-size: 20
-        wait-duration-in-open-state: 30s
+        sliding-window-size: 100
+        wait-duration-in-open-state: 60s
         permitted-number-of-calls-in-half-open-state: 5
       vertex-service:
         failure-rate-threshold: 50
         minimum-number-of-calls: 10
         sliding-window-type: count-based
-        sliding-window-size: 20
-        wait-duration-in-open-state: 30s
+        sliding-window-size: 100
+        wait-duration-in-open-state: 60s
         permitted-number-of-calls-in-half-open-state: 5
   timelimiter:
     instances:
       naver-service:
-        timeout-duration: 5s
+        timeout-duration: 3s
         cancel-running-future: true
       vertex-service:
         timeout-duration: 5s
