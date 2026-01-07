@@ -45,3 +45,8 @@ naver:
   api:
     client-id:
     client-secret:
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
