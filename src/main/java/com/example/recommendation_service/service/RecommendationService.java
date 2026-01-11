@@ -45,7 +45,7 @@ public class RecommendationService {
                                                           .radius(
                                                                   HOTSPOTS_KEY,
                                                                   new Circle(center, radius),
-                                                                  RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates()
+                                                                  RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates().sortAscending()
                                                           )
                                                           .filter(geoResult -> geoResult != null && geoResult.getContent() != null && geoResult.getContent().getPoint() != null)
                                                           .map(geoResult -> geoResult.getContent().getPoint());
@@ -64,8 +64,7 @@ public class RecommendationService {
 
         // 가장 높은 점수의 핫스팟을 찾아 주소로 변환
         return predictions
-                .reduce((loc1, loc2) -> loc1.score > loc2.score ? loc1 : loc2)
-                .doOnSuccess(best -> log.info("최고 핫스팟 선정: {}", best))
+                .reduce((loc1, loc2) -> loc1.score() >= loc2.score() ? loc1 : loc2)                .doOnSuccess(best -> log.info("최고 핫스팟 선정: {}", best))
                 .flatMap(best -> naverMapsClient.reverseGeocode(best.location.getX(), best.location.getY()))
                 .doOnNext(locationName -> log.info("주소 변환 결과: {}", locationName))
                 .doOnError(e -> log.error("최종 주소 변환 중 오류 발생: {}", e.getMessage()))
