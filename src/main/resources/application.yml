@@ -9,8 +9,8 @@ spring:
     timeout-per-shutdown-phase: 30s
   data:
     redis:
-      host:
-      port:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
 
 resilience4j:
   circuitbreaker:
@@ -38,21 +38,45 @@ resilience4j:
         timeout-duration: 5s
         cancel-running-future: true
 
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: "${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka}"
+
 gcp:
-  project-id:
-  location:
+  project-id: "${GCP_PROJECT_ID:}"
+  location: "${GCP_LOCATION:us-central1}"
   vertex-ai:
-    endpoint-id:
+    endpoint-id: "${GCP_VERTEX_AI_ENDPOINT_ID:}"
 
 naver:
   api:
-    client-id:
-    client-secret:
+    client-id: "${NAVER_CLIENT_ID:}"
+    client-secret: "${NAVER_CLIENT_SECRET:}"
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+  endpoints:
+    web:
+      exposure:
+        include: "health, prometheus"
+
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
   tracing:
     sampling:
       probability: 1.0
     zipkin:
       tracing:
-        endpoint: "http://localhost:9411/api/v2/spans"
+        endpoint: "${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}"
