@@ -41,15 +41,6 @@ public class VertexAiClient {
                 projectId, location, endpointId);
     }
 
-    private Mono<String> getAccessToken() {
-        return Mono.fromCallable(() -> {
-            GoogleCredentials credentials = GoogleCredentials.getApplicationDefault()
-                                                             .createScoped(Collections.singleton("https://www.googleapis.com/auth/cloud-platform"));
-            AccessToken accessToken = credentials.refreshAccessToken();
-            return accessToken.getTokenValue();
-        }).subscribeOn(Schedulers.boundedElastic());
-    }
-
     public Mono<Double> predict(double longitude, double latitude, int timeSlot, int dayOfWeek, String city) {
         String apiUrl = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/%s:predict",
                 location, projectId, location, endpointId);
@@ -84,5 +75,14 @@ public class VertexAiClient {
             log.warn("Vertex AI 호출 실패 또는 서킷 오픈 (Fallback: 0.0 반환). Error: {}", throwable.getMessage());
             return Mono.just(0.0);
         });
+    }
+
+    private Mono<String> getAccessToken() {
+        return Mono.fromCallable(() -> {
+            GoogleCredentials credentials = GoogleCredentials.getApplicationDefault()
+                                                             .createScoped(Collections.singleton("https://www.googleapis.com/auth/cloud-platform"));
+            AccessToken accessToken = credentials.refreshAccessToken();
+            return accessToken.getTokenValue();
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 }
