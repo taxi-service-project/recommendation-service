@@ -14,8 +14,18 @@ public class WebClientConfig {
     @Bean
     public WebClient.Builder webClientBuilder() {
         HttpClient httpClient = HttpClient.create()
-                                          .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000)
-                                          .responseTimeout(Duration.ofSeconds(10));
+                                          .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 2000)
+                                          .responseTimeout(Duration.ofMillis(3500));
+
+        return WebClient.builder()
+                        .clientConnector(new ReactorClientHttpConnector(httpClient));
+    }
+
+    @Bean
+    public WebClient.Builder vertexWebClientBuilder() {
+        HttpClient httpClient = HttpClient.create()
+                                          .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 4000)
+                                          .responseTimeout(Duration.ofMillis(5500));
 
         return WebClient.builder()
                         .clientConnector(new ReactorClientHttpConnector(httpClient));

@@ -3,6 +3,7 @@ package com.example.recommendation_service.client;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.AccessToken;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreaker;
 import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreakerFactory;
@@ -29,12 +30,12 @@ public class VertexAiClient {
     public VertexAiClient(@Value("${gcp.project-id}") String projectId,
                           @Value("${gcp.location}") String location,
                           @Value("${gcp.vertex-ai.endpoint-id}") String endpointId,
-                          WebClient.Builder webClientBuilder,
+                          @Qualifier("vertexWebClientBuilder") WebClient.Builder builder,
                           ReactiveCircuitBreakerFactory cbFactory) {
         this.projectId = projectId;
         this.location = location;
         this.endpointId = endpointId;
-        this.webClient = webClientBuilder.build();
+        this.webClient = builder.build();
         this.circuitBreaker = cbFactory.create("vertex-service");
 
         log.info("VertexAiClient created. Project: {}, Location: {}, Endpoint: {}",
