@@ -13,7 +13,11 @@ import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +28,7 @@ public class RecommendationService {
 
     private final VertexAiClient vertexAiClient;
     private final NaverMapsClient naverMapsClient;
-    
+
     private final ReactiveRedisTemplate<String, String> reactiveRedisTemplate; // 영속성 레디스
 
     private record PredictedLocation(Point location, double score) {
@@ -41,32 +45,65 @@ public class RecommendationService {
         Point center = new Point(lon, lat);
         Distance radius = new Distance(7, Metrics.KILOMETERS);
 
-        Flux<Point> nearbyHotspots = reactiveRedisTemplate.opsForGeo()
-                                                          .radius(
-                                                                  HOTSPOTS_KEY,
-                                                                  new Circle(center, radius),
-                                                                  RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates().sortAscending()
-                                                          )
-                                                          .filter(geoResult -> geoResult != null && geoResult.getContent() != null && geoResult.getContent().getPoint() != null)
-                                                          .map(geoResult -> geoResult.getContent().getPoint());
+        // 1. Redis에서 반경 7km 내 핫스팟 조회 후 하나의 List로 수집
+        Mono<List<Point>> hotspotsMono = reactiveRedisTemplate.opsForGeo()
+                                                              .radius(
+                                                                      HOTSPOTS_KEY,
+                                                                      new Circle(center, radius),
+                                                                      RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeCoordinates().sortAscending()
+                                                              )
+                                                              .filter(geoResult -> geoResult != null && geoResult.getContent() != null && geoResult.getContent().getPoint() != null)
+                                                              .map(geoResult -> geoResult.getContent().getPoint())
+                                                              .collectList();
 
-        // nearbyHotspots 스트림을 예측 점수로 변환
-        Flux<PredictedLocation> predictions = nearbyHotspots
-                .flatMap(hotspot ->
-                        vertexAiClient.predict(hotspot.getX(), hotspot.getY(), timeSlot, dayOfWeek, city)
-                                      .doOnNext(score -> log.info("Vertex AI 예측 점수: {}", score))
-                                      .map(score -> new PredictedLocation(hotspot, score))
-                                      .doOnError(e -> log.error("Vertex AI 예측 중 오류 발생", e))
-                                      .onErrorResume(e -> Mono.empty())
-                )
-                .doOnNext(prediction -> log.info("예측된 핫스팟: {}", prediction))
-                .doOnError(e -> log.error("예측 스트림에서 오류 발생: {}", e.getMessage()));
+        // 2. 수집된 핫스팟 리스트로 Vertex AI 단 1회 Bulk 호출
+        Mono<PredictedLocation> bestPredictionMono = hotspotsMono.flatMap(hotspots -> {
+            if (hotspots.isEmpty()) {
+                log.info("반경 내 핫스팟이 존재하지 않습니다.");
+                return Mono.empty();
+            }
 
-        // 가장 높은 점수의 핫스팟을 찾아 주소로 변환
-        return predictions
-                .reduce((loc1, loc2) -> loc1.score() >= loc2.score() ? loc1 : loc2)
-                .doOnSuccess(best -> log.info("최고 핫스팟 선정: {}", best))
-                .flatMap(best -> naverMapsClient.reverseGeocode(best.location.getX(), best.location.getY()))
+            // AI 모델에 전달할 Bulk Payload(List<Map>) 조립
+            List<Map<String, Object>> instances = hotspots.stream().map(hotspot -> {
+                Map<String, Object> instance = new HashMap<>();
+                instance.put("city", city);
+                instance.put("latitude", String.valueOf(hotspot.getY()));
+                instance.put("longitude", String.valueOf(hotspot.getX()));
+                instance.put("time_slot", String.valueOf(timeSlot));
+                instance.put("day_of_week", String.valueOf(dayOfWeek));
+                return instance;
+            }).toList();
+
+            // 단 1회의 외부 API 호출
+            return vertexAiClient.predictBulk(instances)
+                                 .map(scores -> {
+                                     // 리턴받은 점수 리스트 중 최고 점수와 해당 핫스팟 매핑
+                                     double maxScore = -1.0;
+                                     int maxIndex = -1;
+
+                                     for (int i = 0; i < scores.size(); i++) {
+                                         if (scores.get(i) > maxScore) {
+                                             maxScore = scores.get(i);
+                                             maxIndex = i;
+                                         }
+                                     }
+
+                                     if (maxIndex == -1) {
+                                         return null;
+                                     }
+
+                                     PredictedLocation best = new PredictedLocation(hotspots.get(maxIndex), maxScore);
+                                     log.info("Vertex AI Bulk 예측 완료. 최고 핫스팟: {}", best);
+                                     return best;
+                                 });
+        });
+
+        // 3. 가장 높은 점수의 핫스팟을 주소로 변환하여 응답
+        return bestPredictionMono
+                .flatMap(best -> {
+                    if (best == null) return Mono.empty();
+                    return naverMapsClient.reverseGeocode(best.location().getX(), best.location().getY());
+                })
                 .doOnNext(locationName -> log.info("주소 변환 결과: {}", locationName))
                 .doOnError(e -> log.error("최종 주소 변환 중 오류 발생: {}", e.getMessage()))
                 .map(locationName -> String.format("약 15분뒤 %s 인근의 수요가 가장 높을 것으로 예상됩니다. 이동을 추천합니다.", locationName))
